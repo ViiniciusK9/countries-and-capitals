@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\View\View;
 
 class MainController extends Controller
@@ -52,9 +53,9 @@ class MainController extends Controller
 
     public function game(): View
     {
-        $quiz = session()->get('quiz');
-        $totalQuestions = session()->get('total_questions');
-        $currentQuestion = session()->get('current_question') - 1;
+        $quiz = session('quiz');
+        $totalQuestions = session('total_questions');
+        $currentQuestion = session('current_question') - 1;
 
         $answers = $quiz[$currentQuestion]['wrong_answers'];
         $answers[] = $quiz[$currentQuestion]['capital'];
@@ -67,6 +68,64 @@ class MainController extends Controller
             'currentQuestion' => $currentQuestion,
             'answers' => $answers,
         ]);
+    }
+
+    public function answer($encAnswer)
+    {
+        try {
+            $answer = Crypt::decryptString($encAnswer);
+        } catch (\Exception $e) {
+            return redirect()->route('game');
+        }
+
+        $quiz = session('quiz');
+        $currentQuestion = session('current_question') - 1;
+        $totalQuestions = session('total_questions');
+        $correctAnswer = $quiz[$currentQuestion]['capital'];
+        $correctAnswers = session('correct_answers');
+        $wrongAnswers = session('wrong_answers');
+
+        if ($answer == $correctAnswer) {
+            $correctAnswers++;
+            $quiz[$currentQuestion]['correct'] = true;
+        } else {
+            $wrongAnswers++;
+            $quiz[$currentQuestion]['correct'] = false;
+        }
+
+        session()->put([
+            'quiz' => $quiz,
+            'correct_answers' => $correctAnswers,
+            'wrong_answers' => $wrongAnswers,
+        ]);
+
+        return view('answer-result', [
+            'country' => $quiz[$currentQuestion]['country'],
+            'correctAnswer' => $correctAnswer,
+            'choiceAnswer' => $answer,
+            'currentQuestion' => $currentQuestion,
+            'totalQuestions' => $totalQuestions,
+        ]);
+    }
+
+    public function nextQuestion()
+    {
+        $currentQuestion = session('current_question');
+        $totalQuestions = session('total_questions');
+
+        if ($currentQuestion < $totalQuestions) {
+            $currentQuestion++;
+            session()->put('current_question', $currentQuestion);
+            return redirect()->route('game');
+        }
+
+        return redirect()->route('show-results');
+    }
+
+    public function showResults()
+    {
+        echo 'mostrar resultados finais';
+        dd(session()->all());
     }
 
     private function prepareQuiz(int $totalQuestions): array
@@ -90,12 +149,11 @@ class MainController extends Controller
             shuffle($other_capitals);
             $question['wrong_answers'] = array_slice($other_capitals, 0, 3);
 
-            $question['correct_answer'] = null;
+            $question['correct'] = null;
 
             $questions[] = $question;
         }
 
         return $questions;
     }
-
 }
